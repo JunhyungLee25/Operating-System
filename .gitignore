@@ -14,3 +14,5 @@ build/
 
 # 기타 (로그 파일 등)
 *.log
+AGENTS.md
+CLAUDE.md
