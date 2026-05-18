@@ -2,10 +2,10 @@
 subject: 운영체제
 study_type: B
 concept: Deadlocks
-tags: [4-1, 운영체제, deadlock, resource-allocation-graph, prevention, avoidance]
-source_files: [운영체제/필기본/ch7/os-ch7_18p까지.pdf]
+tags: [4-1, 운영체제, deadlock, avoidance, safe-state, bankers-algorithm]
+source_files: [운영체제/필기본/ch7/os-ch7_18p까지.pdf, 운영체제/필기본/ch7/os-ch7-19p~32p.pdf]
 created: 2026-05-17
-last_reviewed: 2026-05-17
+last_reviewed: 2026-05-18
 status: review
 ---
 
@@ -33,6 +33,14 @@ flowchart TD
     O --> Q[Avoidance]
     O --> R[Detection and recovery]
     O --> S[Ignore]
+    Q --> T[Safe state]
+    T --> U[Safe sequence]
+    T --> V[Unsafe state: possible deadlock]
+    Q --> W[Avoidance algorithms]
+    W --> X[Single instance: RAG + claim edge]
+    W --> Y[Multiple instances: Banker's algorithm]
+    Y --> Z[Safety algorithm]
+    Y --> AA[Resource-request algorithm]
 ```
 
 ## 1. Deadlock의 목표와 배경
@@ -263,7 +271,180 @@ Avoidance 알고리즘은 자원 할당 상태를 동적으로 검사하여 **ci
 
 핵심 전제는 **추가적인 사전 정보(a priori information)**가 필요하다는 점이다. 즉, 프로세스가 앞으로 얼마나 많은 자원을 필요로 할 수 있는지 모르면 avoidance를 적용하기 어렵다.
 
-## 11. 시험 포인트
+## 11. Safe State
+
+Safe state는 deadlock avoidance의 중심 개념이다. 어떤 프로세스가 현재 available resource를 요청했을 때, 시스템은 그 요청을 바로 승인해도 **safe state가 유지되는지** 판단해야 한다.
+
+시스템이 safe state라는 것은 모든 프로세스에 대해 어떤 순서 `<P1, P2, ..., Pn>`가 존재해서, 각 `Pi`가 앞으로 더 요청할 수 있는 자원을 다음 두 자원으로 만족시킬 수 있다는 뜻이다.
+
+- 현재 available resources
+- `Pi`보다 앞선 순서의 모든 `Pj`가 끝난 뒤 반납할 resources
+
+이 순서를 **safe sequence**라고 부른다. 직관적으로는 다음 흐름이다.
+
+1. 어떤 프로세스 `Pi`의 남은 필요량을 지금 당장 만족할 수 없다.
+2. `Pi`는 앞 순서의 프로세스들이 끝날 때까지 기다린다.
+3. 앞 프로세스들이 종료되면 그들이 가진 자원을 반납한다.
+4. 그 자원으로 `Pi`가 실행, 종료, 반납할 수 있다.
+5. 이후 `Pi+1`도 같은 방식으로 진행된다.
+
+시험에서는 safe sequence를 찾는 문제가 자주 나온다. 핵심은 **지금 당장 모든 프로세스를 만족시킬 필요는 없고, 완료 가능한 프로세스를 하나씩 골라 자원 반납을 누적하는 것**이다.
+
+## 12. Safe, Unsafe, Deadlock의 관계
+
+Safe/unsafe/deadlock은 같은 말이 아니다.
+
+| 상태 | 의미 | deadlock 여부 |
+|---|---|---|
+| Safe state | 어떤 safe sequence가 존재함 | **deadlock 없음** |
+| Unsafe state | safe sequence를 보장할 수 없음 | **deadlock 가능성 있음** |
+| Deadlock state | 프로세스들이 서로의 자원을 기다리며 진행 불가 | **deadlock 발생** |
+
+가장 중요한 함정은 **unsafe state가 곧 deadlock은 아니라는 점**이다. Unsafe state는 앞으로의 요청 순서에 따라 deadlock으로 갈 수 있는 위험 상태다. Avoidance의 목표는 시스템이 **unsafe state에 들어가지 않도록 보장**하는 것이다.
+
+## 13. Avoidance Algorithms
+
+Deadlock avoidance 알고리즘은 resource type의 instance 수에 따라 달라진다.
+
+| 자원 타입별 instance 수 | 사용 알고리즘 |
+|---|---|
+| Single instance | Resource-allocation graph scheme |
+| Multiple instances | Banker's algorithm |
+
+Single instance에서는 그래프에 **claim edge**를 추가해 앞으로 요청할 수 있는 자원을 미리 표시하고, 요청을 승인했을 때 cycle이 생기는지 검사한다. Multiple instances에서는 그래프만으로 충분하지 않기 때문에 Banker's algorithm처럼 행렬 기반 검사를 사용한다.
+
+## 14. Resource-Allocation Graph Scheme
+
+이 방식은 각 resource type이 instance를 하나만 갖는 경우의 avoidance 방식이다.
+
+### 14.1 Claim Edge
+
+**Claim edge `Pi -> Rj`는 프로세스 `Pi`가 미래에 자원 `Rj`를 요청할 수 있음을 나타내는 점선 edge**다.
+
+Claim edge는 다음처럼 상태가 바뀐다.
+
+1. 프로세스가 실행 전에 사용할 가능성이 있는 자원을 미리 claim한다.
+2. 실제로 요청하면 `claim edge`가 `request edge`로 바뀐다.
+3. 요청이 승인되면 `request edge`가 `assignment edge`로 바뀐다.
+4. 자원이 release되면 `assignment edge`가 다시 `claim edge`로 바뀐다.
+
+이 방식도 maximum demand와 같은 **a priori claim**이 필요하다. 미리 claim하지 않은 자원을 임의로 요청할 수 있다면 avoidance 판단을 할 수 없다.
+
+### 14.2 승인 조건
+
+프로세스 `Pi`가 자원 `Rj`를 요청하면, 시스템은 `Pi -> Rj` request edge를 `Rj -> Pi` assignment edge로 바꾸는 상황을 가정한다.
+
+요청은 **그 변환이 resource-allocation graph에 cycle을 만들지 않을 때만 승인**된다. Cycle이 생긴다면 지금 당장 deadlock이 아니더라도 unsafe state로 들어갈 수 있으므로 요청을 대기시킨다.
+
+## 15. Banker's Algorithm
+
+Banker's algorithm은 **각 resource type이 여러 instance를 갖는 경우**의 deadlock avoidance 알고리즘이다. 이름처럼 은행이 고객에게 대출을 승인할 때, 모든 고객이 언젠가 최대 요구량까지 빌려도 은행이 파산하지 않는지 확인하는 방식에 비유한다.
+
+기본 전제는 다음과 같다.
+
+- 각 프로세스는 시작 전에 각 resource type별 **maximum use**를 선언해야 한다.
+- 프로세스가 자원을 요청하면 시스템은 바로 승인하지 않고 safe state 유지 여부를 검사한다.
+- 자원이 충분하지 않거나 승인 후 unsafe state가 되면 프로세스는 기다려야 한다.
+- 프로세스가 필요한 모든 자원을 얻으면 유한 시간 안에 실행을 끝내고 자원을 반환해야 한다.
+
+Banker's algorithm은 요청 자체를 금지하는 prevention이 아니라, **요청을 승인했을 때 안전한지 시뮬레이션한 뒤 결정하는 avoidance**다.
+
+## 16. Banker's Algorithm 자료구조
+
+프로세스 수를 `n`, resource type 수를 `m`이라고 하자. Banker's algorithm은 다음 네 자료구조를 사용한다.
+
+| 자료구조 | 크기 | 의미 |
+|---|---|---|
+| `Available` | `m` vector | `Available[j] = k`이면 resource type `Rj`의 사용 가능 instance가 `k`개 |
+| `Max` | `n x m` matrix | `Max[i,j] = k`이면 `Pi`가 `Rj`를 최대 `k`개까지 요청 가능 |
+| `Allocation` | `n x m` matrix | `Allocation[i,j] = k`이면 `Pi`가 현재 `Rj`를 `k`개 할당받음 |
+| `Need` | `n x m` matrix | `Need[i,j] = k`이면 `Pi`가 완료까지 `Rj`를 최대 `k`개 더 필요로 함 |
+
+`Need`는 따로 임의로 정하는 값이 아니라 다음 식으로 계산된다.
+
+```text
+Need[i,j] = Max[i,j] - Allocation[i,j]
+```
+
+문제 풀이에서는 `Need` 계산 실수가 가장 흔하다. `Max`에서 `Allocation`을 빼야 하며, `Available`에서 빼는 것이 아니다.
+
+## 17. Safety Algorithm과 Resource-Request Algorithm
+
+### 17.1 Safety Algorithm
+
+Safety algorithm은 현재 상태가 safe state인지 검사한다.
+
+1. `Work`와 `Finish`를 만든다.
+   - `Work = Available`
+   - 모든 프로세스에 대해 `Finish[i] = false`
+2. 아직 끝나지 않은 프로세스 중 `Need[i] <= Work`를 만족하는 `Pi`를 찾는다.
+3. 그런 `Pi`가 있으면 `Pi`가 실행을 끝내고 자원을 반납한다고 가정한다.
+   - `Work = Work + Allocation[i]`
+   - `Finish[i] = true`
+   - 다시 2번으로 돌아간다.
+4. 모든 `Finish[i] == true`가 되면 safe state다.
+
+여기서 `Need[i] <= Work`는 모든 resource type에 대해 성분별로 비교한다는 뜻이다. 하나의 자원 타입이라도 부족하면 그 프로세스는 지금 완료 가능한 후보가 아니다.
+
+### 17.2 Resource-Request Algorithm
+
+프로세스 `Pi`의 요청 벡터를 `Request[i]`라고 하자. `Request[i][j] = k`이면 `Pi`가 resource type `Rj`를 `k`개 요청한다는 뜻이다.
+
+요청 처리는 다음 순서로 진행된다.
+
+1. `Request[i] <= Need[i]`인지 확인한다.
+   - 아니면 maximum claim을 초과한 것이므로 error다.
+2. `Request[i] <= Available`인지 확인한다.
+   - 아니면 현재 자원이 부족하므로 `Pi`는 기다린다.
+3. 일단 요청을 승인했다고 가정하고 상태를 임시 변경한다.
+
+```text
+Available = Available - Request[i]
+Allocation[i] = Allocation[i] + Request[i]
+Need[i] = Need[i] - Request[i]
+```
+
+4. 임시 상태에 safety algorithm을 실행한다.
+   - safe이면 실제로 자원을 할당한다.
+   - unsafe이면 `Pi`는 기다리고, 임시 변경 전 상태로 복구한다.
+
+이 알고리즘의 핵심은 **자원이 현재 충분하더라도 바로 주지 않는다는 점**이다. 현재 충분함은 `Request <= Available`만 의미하고, deadlock avoidance에서는 추가로 safe state 유지 여부까지 확인해야 한다.
+
+### 17.3 Banker 예제 해석
+
+슬라이드 예제는 프로세스 5개 `P0`~`P4`, resource type 3개 `A`, `B`, `C`를 사용한다.
+
+- 총 instance: `A=10`, `B=5`, `C=7`
+- 시점 `T0`의 `Available = (3, 3, 2)`
+
+| Process | Allocation A B C | Max A B C | Need A B C |
+|---|---:|---:|---:|
+| P0 | 0 1 0 | 7 5 3 | 7 4 3 |
+| P1 | 2 0 0 | 3 2 2 | 1 2 2 |
+| P2 | 3 0 2 | 9 0 2 | 6 0 0 |
+| P3 | 2 1 1 | 2 2 2 | 0 1 1 |
+| P4 | 0 0 2 | 4 3 3 | 4 3 1 |
+
+이 상태는 safe state다. 한 safe sequence는 다음과 같다.
+
+```text
+<P1, P3, P4, P2, P0>
+```
+
+검산 흐름은 다음처럼 볼 수 있다.
+
+| 순서 | 실행 가능 이유 | 실행 후 Work |
+|---|---|---|
+| 시작 | `Work = Available = (3,3,2)` | (3,3,2) |
+| P1 | `Need(P1) = (1,2,2) <= (3,3,2)` | (5,3,2) |
+| P3 | `Need(P3) = (0,1,1) <= (5,3,2)` | (7,4,3) |
+| P4 | `Need(P4) = (4,3,1) <= (7,4,3)` | (7,4,5) |
+| P2 | `Need(P2) = (6,0,0) <= (7,4,5)` | (10,4,7) |
+| P0 | `Need(P0) = (7,4,3) <= (10,4,7)` | (10,5,7) |
+
+모든 프로세스가 완료 가능하므로 이 상태는 safe state다.
+
+## 18. 시험 포인트
 
 - Deadlock은 네 조건이 **동시에** 성립할 때 발생 가능하다.
 - `Pi -> Rj`는 request edge, `Rj -> Pi`는 assignment edge다.
@@ -275,3 +456,12 @@ Avoidance 알고리즘은 자원 할당 상태를 동적으로 검사하여 **ci
 - Circular wait를 깨려면 resource type에 total ordering을 부여하고 증가 순서로 요청하게 한다.
 - Lock ordering은 `from/to` 같은 호출 맥락이 아니라 모든 실행이 공유하는 전역 순서를 기준으로 해야 한다.
 - Avoidance는 최대 요구량 같은 사전 정보를 필요로 한다.
+- Safe state이면 deadlock은 없지만, unsafe state라고 해서 즉시 deadlock은 아니다.
+- Avoidance의 목표는 시스템이 **unsafe state에 들어가지 않게 하는 것**이다.
+- Single instance resource type에는 claim edge를 사용하는 resource-allocation graph scheme을 적용할 수 있다.
+- Claim edge는 미래 요청 가능성을 나타내며, request/assignment/release 과정에서 edge 종류가 바뀐다.
+- Banker's algorithm은 multiple instances에 사용하는 avoidance 알고리즘이다.
+- `Need = Max - Allocation`이다. `Available`과 헷갈리면 안 된다.
+- Safety algorithm은 `Need[i] <= Work`인 프로세스를 찾아 완료시킨 뒤 `Work`에 `Allocation[i]`를 더하는 과정을 반복한다.
+- Resource-request algorithm은 `Request <= Need`, `Request <= Available`, 가상 할당 후 safe state 검사를 순서대로 수행한다.
+- 자원이 현재 충분해도 요청 승인 후 unsafe state가 되면 할당하지 않고 기존 상태로 복구한다.
