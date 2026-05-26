@@ -2,10 +2,10 @@
 subject: 운영체제
 study_type: B
 concept: Deadlocks
-tags: [4-1, 운영체제, deadlock, avoidance, safe-state, bankers-algorithm]
-source_files: [운영체제/필기본/ch7/os-ch7_18p까지.pdf, 운영체제/필기본/ch7/os-ch7-19p~32p.pdf]
+tags: [4-1, 운영체제, deadlock, avoidance, detection, recovery]
+source_files: [운영체제/필기본/ch7/os-ch7_18p까지.pdf, 운영체제/필기본/ch7/os-ch7-19p~32p.pdf, 운영체제/필기본/ch7/os-ch7-33p_45p.pdf]
 created: 2026-05-17
-last_reviewed: 2026-05-18
+last_reviewed: 2026-05-21
 status: review
 ---
 
@@ -41,6 +41,12 @@ flowchart TD
     W --> Y[Multiple instances: Banker's algorithm]
     Y --> Z[Safety algorithm]
     Y --> AA[Resource-request algorithm]
+    R --> AB[Deadlock detection]
+    AB --> AC[Single instance: wait-for graph cycle]
+    AB --> AD[Multiple instances: detection algorithm]
+    R --> AE[Recovery]
+    AE --> AF[Process termination]
+    AE --> AG[Resource preemption]
 ```
 
 ## 1. Deadlock의 목표와 배경
@@ -444,7 +450,184 @@ Need[i] = Need[i] - Request[i]
 
 모든 프로세스가 완료 가능하므로 이 상태는 safe state다.
 
-## 18. 시험 포인트
+### 17.4 P1 요청 예제
+
+`P1`이 `(1,0,2)`를 요청한다고 하자.
+
+1. `Request(P1) <= Need(P1)`인지 확인한다.
+2. `Request(P1) <= Available`인지 확인한다.
+3. 둘 다 만족하면 임시로 할당해 본다.
+
+기존 `Available = (3,3,2)`에서 `(1,0,2)`를 `P1`에게 할당하면 상태는 다음처럼 바뀐다.
+
+| Process | Allocation A B C | Need A B C |
+|---|---:|---:|
+| P0 | 0 1 0 | 7 4 3 |
+| P1 | 3 0 2 | 0 2 0 |
+| P2 | 3 0 2 | 6 0 0 |
+| P3 | 2 1 1 | 0 1 1 |
+| P4 | 0 0 2 | 4 3 1 |
+
+| 항목 | 값 |
+|---|---|
+| 새 `Available` | `(2,3,0)` |
+| 가능한 safe sequence | `<P1, P3, P4, P0, P2>` |
+
+따라서 `P1`의 `(1,0,2)` 요청은 승인할 수 있다. 핵심은 **요청량이 현재 available보다 작다는 사실만으로는 부족하고, 가상 할당 후에도 safe sequence가 존재해야 한다**는 점이다.
+
+추가 함정 예시는 다음과 같이 정리한다.
+
+| 요청 | 판정 | 이유 |
+|---|---|---|
+| `P4`가 `(3,3,0)` 요청 | 승인 불가 | `P1` 요청 승인 후 상태 기준으로 `Available = (2,3,0)`이므로 A가 부족하다. |
+| `P0`가 `(0,2,0)` 요청 | 승인 불가 | 현재 자원은 충분하지만 가상 할당 후 모든 프로세스를 완료시키는 safe sequence를 찾을 수 없어 unsafe state가 된다. |
+
+## 18. Deadlock Detection
+
+Deadlock detection은 시스템이 deadlock state에 들어가는 것을 **허용**한 뒤, 나중에 deadlock을 찾아 recovery를 수행하는 접근이다.
+
+전체 구조는 세 단계로 볼 수 있다.
+
+1. 시스템이 deadlock에 들어갈 수 있음을 허용한다.
+2. detection algorithm으로 deadlock 존재 여부를 검사한다.
+3. deadlock이 발견되면 recovery scheme을 적용한다.
+
+Prevention과 avoidance가 "애초에 들어가지 않게 막기"라면, detection and recovery는 "들어갈 수는 있지만 발견해서 회복하기"다.
+
+## 19. Single Instance Detection: Wait-for Graph
+
+각 resource type이 instance를 하나만 가진다면 **wait-for graph**로 deadlock을 탐지할 수 있다.
+
+| 요소 | 의미 |
+|---|---|
+| 노드 | 프로세스 |
+| `Pi -> Pj` | `Pi`가 `Pj`가 가진 자원을 기다림 |
+| cycle 존재 | deadlock 존재 |
+
+Wait-for graph는 resource-allocation graph에서 자원 노드를 제거하고, "누가 누구를 기다리는가"만 남긴 그래프다.
+
+예를 들어 `Pi -> Rk` request edge가 있고 `Rk -> Pj` assignment edge가 있으면, wait-for graph에서는 `Pi -> Pj`로 표현한다. 이 그래프에 cycle이 있으면 프로세스들이 서로를 원형으로 기다리는 것이므로 deadlock이 존재한다.
+
+Cycle 탐지 알고리즘은 vertex 수가 `n`일 때 대략 `O(n^2)` 연산이 필요하다.
+
+## 20. Several Instances Detection: 자료구조
+
+각 resource type이 여러 instance를 가지면 wait-for graph만으로는 충분하지 않다. 이때는 Banker 계열과 비슷한 행렬 기반 detection algorithm을 사용한다.
+
+사용하는 자료구조는 다음과 같다.
+
+| 자료구조 | 크기 | 의미 |
+|---|---|---|
+| `Available` | `m` vector | 각 resource type별 현재 사용 가능한 instance 수 |
+| `Allocation` | `n x m` matrix | 각 프로세스가 현재 할당받은 resource type별 instance 수 |
+| `Request` | `n x m` matrix | 각 프로세스가 현재 추가로 요청 중인 resource type별 instance 수 |
+
+여기서 `Request[i][j] = k`는 `Pi`가 resource type `Rj`를 `k`개 더 요청하고 있다는 뜻이다.
+
+Banker's safety algorithm의 `Need`와 detection algorithm의 `Request`를 혼동하면 안 된다. **`Need`는 앞으로 최대 얼마나 더 필요할 수 있는지이고, `Request`는 지금 실제로 기다리는 요청량**이다.
+
+## 21. Detection Algorithm
+
+Multiple instances 환경의 detection algorithm은 다음 순서로 진행된다.
+
+1. `Work`와 `Finish`를 만든다.
+   - `Work = Available`
+   - `Allocation[i] != 0`이면 `Finish[i] = false`
+   - `Allocation[i] == 0`이면 `Finish[i] = true`
+2. `Finish[i] == false`이고 `Request[i] <= Work`인 `Pi`를 찾는다.
+3. 그런 `Pi`가 있으면 `Pi`가 완료되어 자원을 반납한다고 가정한다.
+   - `Work = Work + Allocation[i]`
+   - `Finish[i] = true`
+   - 다시 2번으로 돌아간다.
+4. 더 이상 찾을 수 없을 때 `Finish[i] == false`인 프로세스가 남아 있으면, 시스템은 deadlock state다.
+
+`Finish[i] == false`로 남은 프로세스들이 deadlock에 걸린 프로세스다. 이 알고리즘은 deadlock 여부 탐지에 `O(m x n^2)` 정도의 연산이 필요하다.
+
+### Safety Algorithm과의 차이
+
+| 구분 | Banker's safety algorithm | Detection algorithm |
+|---|---|---|
+| 목적 | 현재 상태가 safe state인지 검사 | 현재 deadlock이 있는지 검사 |
+| 비교 대상 | `Need[i] <= Work` | `Request[i] <= Work` |
+| `Finish` 초기화 | 보통 모든 프로세스 false | `Allocation[i] == 0`이면 true |
+| 결과 의미 | 모든 Finish true이면 safe | false가 남으면 해당 프로세스 deadlocked |
+
+## 22. Detection Algorithm 예제
+
+프로세스 `P0`~`P4`, resource type `A`, `B`, `C`가 있고 전체 instance는 `A=7`, `B=2`, `C=6`이다.
+
+시점 `T0`의 상태는 다음과 같다.
+
+| Process | Allocation A B C | Request A B C |
+|---|---:|---:|
+| P0 | 0 1 0 | 0 0 0 |
+| P1 | 2 0 0 | 2 0 2 |
+| P2 | 3 0 3 | 0 0 0 |
+| P3 | 2 1 1 | 1 0 0 |
+| P4 | 0 0 2 | 0 0 2 |
+
+| 항목 | 값 |
+|---|---|
+| `Available` | `(0,0,0)` |
+| 완료 가능한 순서 | `<P0, P2, P3, P1, P4>` |
+
+이 순서로 모든 `Finish[i]`가 true가 되므로 deadlock은 없다.
+
+하지만 `P2`가 type `C`를 1개 더 요청해서 `Request(P2) = (0,0,1)`이 되면 상황이 달라진다.
+
+1. 처음 `Work = (0,0,0)`이다.
+2. `P0`는 `Request(P0) = (0,0,0)`이므로 완료 가능하고, `P0`의 allocation `(0,1,0)`을 반납해 `Work = (0,1,0)`이 된다.
+3. 이후 `P1`, `P2`, `P3`, `P4` 중 누구의 request도 `Work`로 만족시킬 수 없다.
+
+따라서 deadlock이 존재하며, deadlocked processes는 `P1`, `P2`, `P3`, `P4`다.
+
+## 23. Detection Algorithm 사용 시점
+
+Detection algorithm을 언제, 얼마나 자주 실행할지는 고정된 답이 아니라 비용과 위험의 균형 문제다.
+
+고려 기준은 다음과 같다.
+
+- deadlock이 얼마나 자주 발생할 가능성이 있는가
+- deadlock이 발생하면 몇 개의 프로세스를 rollback해야 하는가
+- 여러 disjoint cycle이 있으면 cycle마다 rollback 대상이 필요할 수 있다
+
+Detection을 너무 자주 실행하면 검사 비용이 커진다. 반대로 너무 늦게 실행하면 resource graph에 cycle이 많이 생겨서 어떤 프로세스가 deadlock을 "caused"했는지 판단하기 어려워질 수 있다.
+
+## 24. Recovery from Deadlock: Process Termination
+
+Deadlock을 process termination으로 복구하는 방식은 두 가지다.
+
+| 방식 | 의미 | 장점 | 단점 |
+|---|---|---|---|
+| Abort all deadlocked processes | deadlock에 걸린 프로세스를 모두 종료 | deadlock을 즉시 제거 | 작업 손실이 큼 |
+| Abort one process at a time | cycle이 사라질 때까지 하나씩 종료 | 손실을 줄일 수 있음 | 반복 detection 비용이 듦 |
+
+어떤 프로세스를 먼저 종료할지는 victim selection 문제다. 주요 기준은 다음과 같다.
+
+1. 프로세스 priority
+2. 지금까지 계산한 시간과 완료까지 남은 시간
+3. 이미 사용한 resources
+4. 완료까지 추가로 필요한 resources
+5. 종료해야 하는 프로세스 수
+6. interactive process인지 batch process인지
+
+시험에서는 "무조건 아무 프로세스나 죽이면 된다"가 아니라, **비용을 최소화하는 victim을 골라야 한다**는 식으로 묻기 쉽다.
+
+## 25. Recovery from Deadlock: Resource Preemption
+
+Resource preemption은 프로세스를 바로 종료하지 않고, 일부 자원을 빼앗아 deadlock cycle을 깨는 방식이다.
+
+핵심 이슈는 세 가지다.
+
+| 이슈 | 의미 |
+|---|---|
+| Selecting a victim | 비용을 최소화하도록 어떤 프로세스와 자원을 빼앗을지 고른다. |
+| Rollback | 프로세스를 어떤 safe state로 되돌린 뒤 그 상태에서 재시작한다. |
+| Starvation | 같은 프로세스가 계속 victim으로 선택될 수 있다. |
+
+Starvation을 막으려면 victim selection cost factor에 **rollback 횟수**를 포함해야 한다. 그래야 이미 여러 번 rollback된 프로세스가 계속 희생되는 일을 줄일 수 있다.
+
+## 26. 시험 포인트
 
 - Deadlock은 네 조건이 **동시에** 성립할 때 발생 가능하다.
 - `Pi -> Rj`는 request edge, `Rj -> Pi`는 assignment edge다.
@@ -465,3 +648,13 @@ Need[i] = Need[i] - Request[i]
 - Safety algorithm은 `Need[i] <= Work`인 프로세스를 찾아 완료시킨 뒤 `Work`에 `Allocation[i]`를 더하는 과정을 반복한다.
 - Resource-request algorithm은 `Request <= Need`, `Request <= Available`, 가상 할당 후 safe state 검사를 순서대로 수행한다.
 - 자원이 현재 충분해도 요청 승인 후 unsafe state가 되면 할당하지 않고 기존 상태로 복구한다.
+- `P1`의 `(1,0,2)` 요청 예제는 가상 할당 후 safe sequence `<P1, P3, P4, P0, P2>`가 존재하므로 승인 가능하다.
+- Deadlock detection은 deadlock을 허용한 뒤 detection algorithm과 recovery scheme으로 처리하는 방식이다.
+- Single instance resource type의 detection은 wait-for graph에서 cycle을 찾는 문제로 바뀐다.
+- Wait-for graph의 `Pi -> Pj`는 `Pi`가 `Pj`가 가진 자원을 기다린다는 뜻이다.
+- Multiple instances detection algorithm은 `Need`가 아니라 현재 대기 요청량인 `Request`를 사용한다.
+- Detection algorithm에서는 `Allocation[i] == 0`인 프로세스를 처음부터 `Finish[i] = true`로 둘 수 있다.
+- Detection algorithm에서 끝까지 `Finish[i] == false`로 남은 프로세스가 deadlocked process다.
+- Detection algorithm 실행 빈도는 deadlock 발생 가능성과 rollback 비용에 따라 결정한다.
+- Recovery의 process termination은 deadlocked processes를 모두 abort하거나 cycle이 사라질 때까지 하나씩 abort하는 방식이다.
+- Recovery의 resource preemption은 victim selection, rollback, starvation 방지가 핵심이다.
